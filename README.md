@@ -12,7 +12,13 @@
 npx serve .   # または python3 -m http.server
 ```
 
-## デモ公開(Cloudflare Pages)
+## デモURL
+
+**https://bnyk7gx8xp-afk.github.io/game01/**
+
+GitHub Pages(`gh-pages` ブランチ)で公開中。`index.html` を更新してプッシュすると自動で再デプロイされます(`.github/workflows/pages.yml`)。
+
+## Cloudflare Pages で公開する場合(任意)
 
 GitHub Actions による自動デプロイを用意しています(`.github/workflows/deploy.yml`)。
 リポジトリの **Settings → Secrets and variables → Actions** に以下を追加すると、push のたびに自動でデプロイされます。
