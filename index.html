@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>深夜の旧病院 〜脱出〜</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:#000; overflow:hidden; touch-action:manipulation;
+    font-family:'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif; color:#cfc8bd; user-select:none; -webkit-user-select:none; }
+  #app { height:100%; height:100dvh; display:flex; flex-direction:column; max-width:560px; margin:0 auto; position:relative; }
+
+  /* ===== top bar / inventory ===== */
+  #topbar { flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:8px 10px; background:#0a0908; border-bottom:1px solid #221d18; z-index:5; }
+  #roomname { font-size:13px; letter-spacing:2px; color:#8a7f6e; flex:1; white-space:nowrap; overflow:hidden; }
+  .slot { width:44px; height:44px; border:1px solid #332b22; border-radius:6px; background:#120f0c;
+    display:flex; align-items:center; justify-content:center; font-size:24px; position:relative; }
+  .slot.sel { border-color:#a33; box-shadow:0 0 8px #a3333366; }
+  .slot.pop { animation:pop .4s; }
+  @keyframes pop { 0%{transform:scale(.3)} 60%{transform:scale(1.25)} 100%{transform:scale(1)} }
+
+  /* ===== scene ===== */
+  #stage { flex:1 1 auto; position:relative; overflow:hidden; background:#000; }
+  .scene { position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .5s; }
+  .scene.on { opacity:1; pointer-events:auto; }
+  .scene svg { position:absolute; inset:0; width:100%; height:100%; }
+  .hs { position:absolute; background:transparent; border:none; }
+  .hs:active { background:rgba(255,255,255,.05); border-radius:8px; }
+
+  /* visible back button */
+  #backbtn { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); z-index:6;
+    display:none; padding:10px 22px; font-size:14px; letter-spacing:2px; white-space:nowrap;
+    color:#cfc8bd; background:rgba(10,9,8,.78); border:1px solid #5c4a33; border-radius:20px; }
+  #backbtn:active { background:rgba(44,33,24,.9); }
+
+  /* darkness overlay before flashlight */
+  #dark { position:absolute; inset:0; background:radial-gradient(circle at 50% 55%, rgba(0,0,0,.55) 0%, rgba(0,0,0,.97) 55%, #000 75%); pointer-events:none; transition:opacity 1s; z-index:2; }
+  #vignette { position:absolute; inset:0; pointer-events:none; z-index:3;
+    background:radial-gradient(circle at 50% 50%, transparent 45%, rgba(0,0,0,.75) 100%); }
+  #flicker { position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; z-index:4; }
+  .flickering { animation:flick 4s infinite; }
+  @keyframes flick { 0%,93%,100%{opacity:0} 94%{opacity:.5} 95%{opacity:0} 96.5%{opacity:.65} 97%{opacity:.1} 98%{opacity:.4} }
+
+  /* ghost overlay */
+  #ghost { position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:8; pointer-events:none; background:rgba(0,0,0,.82); }
+  #ghost svg { width:75%; max-width:340px; filter:drop-shadow(0 0 25px rgba(180,200,255,.35)); }
+  .shake { animation:shake .45s; }
+  @keyframes shake { 0%,100%{transform:translate(0,0)} 20%{transform:translate(-9px,5px)} 40%{transform:translate(8px,-7px)} 60%{transform:translate(-7px,-4px)} 80%{transform:translate(6px,6px)} }
+
+  /* ===== message window ===== */
+  #msgbox { flex:0 0 auto; min-height:108px; background:#0a0908; border-top:1px solid #221d18; padding:12px 14px calc(12px + env(safe-area-inset-bottom)); z-index:5; }
+  #msg { font-size:14.5px; line-height:1.75; min-height:52px; white-space:pre-wrap; }
+  #choices { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .btn { flex:1; min-width:110px; padding:12px 8px; background:#1a1410; color:#d8cfc0; border:1px solid #443728;
+    border-radius:8px; font-size:15px; letter-spacing:1px; }
+  .btn:active { background:#2c2118; }
+  .btn.danger { border-color:#7a2020; color:#e0a0a0; }
+
+  /* ===== modal (zoom views / keypad) ===== */
+  #modal { position:absolute; inset:0; background:rgba(0,0,0,.92); z-index:10; display:none; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
+  #modal.on { display:flex; }
+  #modal-inner { width:100%; max-width:340px; background:#0f0d0a; border:1px solid #3a3024; border-radius:12px; padding:20px; text-align:center; }
+  #modal-title { font-size:15px; color:#b0a690; margin-bottom:14px; letter-spacing:2px; }
+  #modal-body { font-size:14px; line-height:1.8; }
+  #pad { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:14px 0; }
+  #pad button { padding:14px 0; font-size:20px; background:#1a1610; color:#cfc5b0; border:1px solid #443a28; border-radius:8px; }
+  #pad button:active { background:#332a1a; }
+  #pad-disp { font-size:26px; letter-spacing:12px; background:#050505; border:1px solid #333; border-radius:6px;
+    padding:8px; margin-bottom:6px; color:#7fff9f; font-family:monospace; min-height:48px; }
+  #modal-close { margin-top:12px; width:100%; }
+
+  /* ===== title / ending ===== */
+  .fullscreen { position:absolute; inset:0; z-index:20; background:#000; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:30px; transition:opacity 1.2s; }
+  .fullscreen.hidden { opacity:0; pointer-events:none; }
+  #title h1 { font-size:30px; letter-spacing:8px; color:#9b1c1c; text-shadow:0 0 18px #5c0a0a; margin-bottom:6px; font-weight:600; }
+  #title h2 { font-size:15px; letter-spacing:6px; color:#6b6253; margin-bottom:50px; font-weight:400; }
+  #title p { font-size:12px; color:#555; line-height:2; margin-top:40px; }
+  .titlebtn { padding:16px 50px; font-size:17px; letter-spacing:4px; background:transparent; color:#cfc8bd;
+    border:1px solid #5c4a33; border-radius:4px; animation:breathe 2.6s infinite; }
+  @keyframes breathe { 0%,100%{opacity:.5} 50%{opacity:1} }
+  #ending h1 { font-size:26px; letter-spacing:6px; margin-bottom:24px; }
+  #ending p { font-size:14px; line-height:2.2; color:#9a917f; margin-bottom:40px; }
+
+  .bloodtext { color:#8f1d1d; text-shadow:0 0 8px #4d0808; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div id="roomname">─</div>
+    <div class="slot" id="slot0"></div>
+    <div class="slot" id="slot1"></div>
+    <div class="slot" id="slot2"></div>
+    <div class="slot" id="slot3"></div>
+  </div>
+
+  <div id="stage">
+    <!-- ===== scene: 201号室 ===== -->
+    <div class="scene" id="sc-room">
+      <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid slice">
+        <rect width="400" height="520" fill="#14110d"/>
+        <rect width="400" height="330" fill="#1b1712"/>
+        <rect y="330" width="400" height="190" fill="#0d0b08"/>
+        <line x1="0" y1="330" x2="400" y2="330" stroke="#000" stroke-width="2"/>
+        <!-- window -->
+        <rect x="250" y="50" width="110" height="140" fill="#05070d" stroke="#2a221b" stroke-width="5"/>
+        <line x1="305" y1="50" x2="305" y2="190" stroke="#2a221b" stroke-width="4"/>
+        <line x1="250" y1="120" x2="360" y2="120" stroke="#2a221b" stroke-width="4"/>
+        <circle cx="278" cy="85" r="14" fill="#aab4c8" opacity=".18"/>
+        <!-- door -->
+        <rect x="30" y="80" width="90" height="250" fill="#241c12" stroke="#0a0805" stroke-width="4"/>
+        <circle cx="105" cy="210" r="5" fill="#5a4a30"/>
+        <!-- bed -->
+        <rect x="150" y="300" width="220" height="22" fill="#3a3228"/>
+        <rect x="150" y="322" width="14" height="80" fill="#2a241c"/>
+        <rect x="356" y="322" width="14" height="80" fill="#2a241c"/>
+        <rect x="155" y="278" width="210" height="26" rx="6" fill="#4a4338"/>
+        <rect x="320" y="266" width="44" height="18" rx="5" fill="#57503f"/>
+        <path d="M180 278 q20 -14 60 -4 q30 8 70 2 l0 4 z" fill="#3c352a"/>
+        <!-- desk + chart -->
+        <rect x="20" y="360" width="100" height="14" fill="#33291a"/>
+        <rect x="28" y="374" width="10" height="70" fill="#241c10"/>
+        <rect x="102" y="374" width="10" height="70" fill="#241c10"/>
+        <rect x="40" y="346" width="46" height="16" rx="2" fill="#6b6250" transform="rotate(-6 63 354)"/>
+        <!-- drawer cabinet -->
+        <rect x="230" y="408" width="120" height="86" fill="#2b2316" stroke="#0a0805" stroke-width="3"/>
+        <rect x="240" y="418" width="100" height="28" fill="#221b10" stroke="#0a0805" stroke-width="2"/>
+        <rect x="240" y="454" width="100" height="28" fill="#221b10" stroke="#0a0805" stroke-width="2"/>
+        <rect x="278" y="426" width="24" height="11" rx="2" fill="#11100c" stroke="#4a3d23" stroke-width="1.5"/>
+        <!-- under-bed shadow -->
+        <rect x="164" y="380" width="192" height="22" fill="#000" opacity=".85"/>
+      </svg>
+      <button class="hs" data-act="room-door"   style="left:5%;  top:13%; width:28%; height:45%"></button>
+      <button class="hs" data-act="room-window" style="left:60%; top:7%;  width:32%; height:32%"></button>
+      <button class="hs" data-act="room-chart"  style="left:4%;  top:62%; width:26%; height:18%"></button>
+      <button class="hs" data-act="room-bed"    style="left:38%; top:50%; width:58%; height:18%"></button>
+      <button class="hs" data-act="room-under"  style="left:38%; top:69%; width:55%; height:11%"></button>
+      <button class="hs" data-act="room-drawer" style="left:55%; top:77%; width:35%; height:18%"></button>
+    </div>
+
+    <!-- ===== scene: 廊下 ===== -->
+    <div class="scene" id="sc-hall">
+      <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid slice">
+        <rect width="400" height="520" fill="#0c0a08"/>
+        <polygon points="0,0 400,0 400,520 0,520" fill="#0e0c09"/>
+        <polygon points="0,0 140,90 140,430 0,520" fill="#16120d"/>
+        <polygon points="400,0 260,90 260,430 400,520" fill="#14100b"/>
+        <rect x="140" y="90" width="120" height="340" fill="#080706"/>
+        <polygon points="0,520 140,430 260,430 400,520" fill="#0a0806"/>
+        <!-- far emergency exit door -->
+        <rect x="168" y="180" width="64" height="150" fill="#1c2a1c" stroke="#000" stroke-width="3"/>
+        <rect x="176" y="160" width="48" height="14" rx="2" fill="#1a3a1a"/>
+        <text x="200" y="171" font-size="9" fill="#3f7a3f" text-anchor="middle">非常口</text>
+        <rect x="186" y="250" width="28" height="10" rx="2" fill="#0c0c0c" stroke="#2f4a2f"/>
+        <!-- left door (treatment room) -->
+        <polygon points="30,130 95,165 95,360 30,395" fill="#241a10" stroke="#000" stroke-width="3"/>
+        <circle cx="86" cy="268" r="5" fill="#54431f"/>
+        <!-- bulletin board right -->
+        <polygon points="300,140 370,105 370,250 300,272" fill="#2a2418" stroke="#0a0805" stroke-width="3"/>
+        <polygon points="310,150 360,126 360,170 310,190" fill="#4a4232" opacity=".7"/>
+        <polygon points="312,200 358,182 358,222 312,237" fill="#41382a" opacity=".7"/>
+        <!-- blood writing -->
+        <text x="200" y="120" font-size="26" fill="#5c0f0f" text-anchor="middle" opacity=".85"
+          style="font-weight:bold; letter-spacing:4px;">みている</text>
+        <path d="M168 124 q2 14 1 22 M214 122 q3 10 2 26 M236 120 q1 8 2 18" stroke="#4a0c0c" stroke-width="3" fill="none" opacity=".7"/>
+        <!-- wheelchair silhouette -->
+        <g opacity=".8">
+          <circle cx="320" cy="430" r="26" fill="none" stroke="#1f1a12" stroke-width="5"/>
+          <circle cx="320" cy="430" r="4" fill="#1f1a12"/>
+          <path d="M300 380 l30 0 l4 28" stroke="#1f1a12" stroke-width="5" fill="none"/>
+          <circle cx="352" cy="448" r="9" fill="none" stroke="#1f1a12" stroke-width="4"/>
+        </g>
+      </svg>
+      <button class="hs" data-act="hall-blood"  style="left:30%; top:13%; width:40%; height:13%"></button>
+      <button class="hs" data-act="hall-exit"   style="left:38%; top:30%; width:24%; height:38%"></button>
+      <button class="hs" data-act="hall-treat"  style="left:4%;  top:25%; width:23%; height:48%"></button>
+      <button class="hs" data-act="hall-board"  style="left:72%; top:19%; width:24%; height:34%"></button>
+      <button class="hs" data-act="hall-wheel"  style="left:70%; top:70%; width:28%; height:22%"></button>
+      <button class="hs" data-act="hall-back"   style="left:0%;  top:88%; width:100%; height:12%"></button>
+    </div>
+
+    <!-- ===== scene: 処置室 ===== -->
+    <div class="scene" id="sc-treat">
+      <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid slice">
+        <rect width="400" height="520" fill="#100e0b"/>
+        <rect width="400" height="320" fill="#171410"/>
+        <rect y="320" width="400" height="200" fill="#0b0907"/>
+        <!-- medicine cabinet -->
+        <rect x="30" y="60" width="150" height="210" fill="#1d2424" stroke="#060808" stroke-width="4"/>
+        <rect x="42" y="74" width="56" height="56" fill="#0d1414" stroke="#2a3a3a" stroke-width="2"/>
+        <rect x="112" y="74" width="56" height="56" fill="#0d1414" stroke="#2a3a3a" stroke-width="2"/>
+        <rect x="42" y="144" width="56" height="56" fill="#0d1414" stroke="#2a3a3a" stroke-width="2"/>
+        <rect x="112" y="144" width="56" height="56" fill="#0d1414" stroke="#2a3a3a" stroke-width="2"/>
+        <circle cx="70" cy="102" r="10" fill="#3a1414"/>
+        <circle cx="140" cy="102" r="10" fill="#14203a"/>
+        <circle cx="70" cy="172" r="10" fill="#143a1c"/>
+        <circle cx="140" cy="172" r="10" fill="#3a3414"/>
+        <rect x="42" y="214" width="126" height="40" fill="#121a1a" stroke="#2a3a3a" stroke-width="2"/>
+        <!-- mirror -->
+        <ellipse cx="300" cy="140" rx="55" ry="75" fill="#0a0f14" stroke="#3a3226" stroke-width="5"/>
+        <path d="M270 90 q15 -18 45 -8" stroke="#1d2733" stroke-width="6" fill="none" opacity=".8"/>
+        <!-- gurney -->
+        <rect x="210" y="330" width="170" height="16" fill="#2e2920"/>
+        <rect x="225" y="346" width="8" height="70" fill="#1f1b14"/>
+        <rect x="355" y="346" width="8" height="70" fill="#1f1b14"/>
+        <circle cx="229" cy="424" r="8" fill="#15120d"/>
+        <circle cx="359" cy="424" r="8" fill="#15120d"/>
+        <path d="M215 330 l160 0 l0 -10 q-80 -14 -160 0 z" fill="#3d3729"/>
+        <path d="M250 318 q30 -10 60 -2" stroke="#241f16" stroke-width="3" fill="none"/>
+        <!-- desk with files -->
+        <rect x="30" y="380" width="130" height="14" fill="#2c2316"/>
+        <rect x="38" y="394" width="10" height="66" fill="#1d160c"/>
+        <rect x="142" y="394" width="10" height="66" fill="#1d160c"/>
+        <rect x="50" y="362" width="50" height="18" fill="#57503e" transform="rotate(4 75 371)"/>
+        <rect x="95" y="360" width="46" height="18" fill="#4a4434" transform="rotate(-7 118 369)"/>
+        <!-- doll on gurney -->
+        <g transform="translate(320 300)">
+          <circle cx="0" cy="0" r="13" fill="#4a4036"/>
+          <circle cx="-4" cy="-2" r="2" fill="#100c08"/>
+          <circle cx="5" cy="-2" r="2" fill="#100c08"/>
+          <rect x="-10" y="11" width="20" height="22" rx="6" fill="#3c332b"/>
+        </g>
+      </svg>
+      <button class="hs" data-act="treat-cab"    style="left:5%;  top:10%; width:42%; height:44%"></button>
+      <button class="hs" data-act="treat-mirror" style="left:60%; top:11%; width:30%; height:31%"></button>
+      <button class="hs" data-act="treat-doll"   style="left:74%; top:53%; width:20%; height:14%"></button>
+      <button class="hs" data-act="treat-files"  style="left:6%;  top:67%; width:34%; height:14%"></button>
+      <button class="hs" data-act="treat-back"   style="left:0%;  top:88%; width:100%; height:12%"></button>
+    </div>
+
+    <!-- ===== scene: 非常口前 ===== -->
+    <div class="scene" id="sc-exit">
+      <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid slice">
+        <rect width="400" height="520" fill="#0b0a08"/>
+        <rect width="400" height="340" fill="#12100c"/>
+        <rect y="340" width="400" height="180" fill="#080706"/>
+        <!-- big exit door -->
+        <rect x="120" y="60" width="160" height="290" fill="#1a2a1a" stroke="#000" stroke-width="5"/>
+        <rect x="135" y="30" width="130" height="26" rx="3" fill="#143014"/>
+        <text x="200" y="49" font-size="16" fill="#4f9a4f" text-anchor="middle" letter-spacing="3">非常口</text>
+        <rect x="248" y="195" width="22" height="52" rx="3" fill="#0c0c0c" stroke="#2f4a2f" stroke-width="2"/>
+        <circle cx="259" cy="208" r="4" fill="#1a1a1a" stroke="#444"/>
+        <!-- keypad -->
+        <rect x="292" y="170" width="52" height="74" rx="5" fill="#15130e" stroke="#3a3424" stroke-width="2"/>
+        <rect x="298" y="178" width="40" height="14" fill="#04140a"/>
+        <g fill="#2a2418">
+          <rect x="298" y="198" width="11" height="9"/><rect x="312" y="198" width="11" height="9"/><rect x="326" y="198" width="11" height="9"/>
+          <rect x="298" y="211" width="11" height="9"/><rect x="312" y="211" width="11" height="9"/><rect x="326" y="211" width="11" height="9"/>
+          <rect x="298" y="224" width="11" height="9"/><rect x="312" y="224" width="11" height="9"/><rect x="326" y="224" width="11" height="9"/>
+        </g>
+        <!-- breaker panel -->
+        <rect x="30" y="120" width="70" height="110" fill="#1c1a16" stroke="#0a0908" stroke-width="4"/>
+        <circle cx="92" cy="175" r="4" fill="#3a3020"/>
+        <rect x="44" y="136" width="42" height="8" fill="#0e0d0a"/>
+        <rect x="44" y="152" width="42" height="8" fill="#0e0d0a"/>
+        <text x="65" y="215" font-size="10" fill="#5a4f3a" text-anchor="middle">配電盤</text>
+      </svg>
+      <button class="hs" data-act="exit-door"    style="left:30%; top:12%; width:35%; height:55%"></button>
+      <button class="hs" data-act="exit-keypad"  style="left:70%; top:30%; width:20%; height:20%"></button>
+      <button class="hs" data-act="exit-breaker" style="left:4%;  top:21%; width:23%; height:25%"></button>
+      <button class="hs" data-act="exit-back"    style="left:0%;  top:88%; width:100%; height:12%"></button>
+    </div>
+
+    <button id="backbtn"></button>
+
+    <div id="dark"></div>
+    <div id="vignette"></div>
+    <div id="flicker" class="flickering"></div>
+
+    <div id="ghost">
+      <svg viewBox="0 0 200 260">
+        <path d="M100 20 q-52 0 -52 70 l0 130 q14 -16 26 0 q13 16 26 0 q13 -16 26 0 q12 16 26 0 l0 -130 q0 -70 -52 -70z"
+          fill="#dfe6f2" opacity=".92"/>
+        <ellipse cx="80" cy="95" rx="9" ry="16" fill="#0a0a12"/>
+        <ellipse cx="120" cy="95" rx="9" ry="16" fill="#0a0a12"/>
+        <ellipse cx="100" cy="140" rx="11" ry="20" fill="#0a0a12"/>
+        <path d="M60 60 q-20 40 -25 90" stroke="#b9c2d6" stroke-width="3" fill="none" opacity=".5"/>
+      </svg>
+    </div>
+
+    <!-- modal -->
+    <div id="modal">
+      <div id="modal-inner">
+        <div id="modal-title"></div>
+        <div id="modal-body"></div>
+        <button class="btn" id="modal-close">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="msgbox">
+    <div id="msg"></div>
+    <div id="choices"></div>
+  </div>
+
+  <!-- title -->
+  <div class="fullscreen" id="title">
+    <h1>深夜の旧病院</h1>
+    <h2>― 脱 出 ―</h2>
+    <button class="titlebtn" id="start">タップして始める</button>
+    <p>🎧 音が出ます。イヤホン推奨。<br>気になる場所をタップして調べよう。</p>
+  </div>
+
+  <!-- ending -->
+  <div class="fullscreen hidden" id="ending">
+    <h1 id="end-title"></h1>
+    <p id="end-text"></p>
+    <button class="titlebtn" id="retry">もう一度</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= audio (WebAudio, no assets) ================= */
+let AC=null, droneGain=null, heartTimer=null;
+function audioInit(){
+  if(AC) return;
+  AC = new (window.AudioContext||window.webkitAudioContext)();
+  // low drone
+  const o1=AC.createOscillator(), o2=AC.createOscillator(), g=AC.createGain();
+  o1.frequency.value=52; o2.frequency.value=52.7; o1.type='sawtooth'; o2.type='sine';
+  g.gain.value=0.022;
+  const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=130;
+  o1.connect(f); o2.connect(f); f.connect(g); g.connect(AC.destination);
+  o1.start(); o2.start(); droneGain=g;
+  // heartbeat loop
+  heartTimer=setInterval(()=>{ thump(0); thump(0.28); }, 1700);
+}
+function thump(d){
+  if(!AC) return;
+  const t=AC.currentTime+d;
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(58,t); o.frequency.exponentialRampToValueAtTime(34,t+0.14);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.34,t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+0.20);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+0.25);
+}
+function sfx(kind){
+  if(!AC) return;
+  const t=AC.currentTime;
+  if(kind==='click'){
+    const o=AC.createOscillator(),g=AC.createGain();
+    o.type='square'; o.frequency.value=900; g.gain.setValueAtTime(0.05,t);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.06);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+0.07);
+  } else if(kind==='get'){
+    [660,880,1320].forEach((f,i)=>{
+      const o=AC.createOscillator(),g=AC.createGain();
+      o.frequency.value=f; g.gain.setValueAtTime(0.08,t+i*0.09);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+i*0.09+0.25);
+      o.connect(g); g.connect(AC.destination); o.start(t+i*0.09); o.stop(t+i*0.09+0.3);
+    });
+  } else if(kind==='unlock'){
+    const o=AC.createOscillator(),g=AC.createGain();
+    o.type='triangle'; o.frequency.setValueAtTime(220,t); o.frequency.linearRampToValueAtTime(150,t+0.18);
+    g.gain.setValueAtTime(0.16,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.3);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+0.32);
+  } else if(kind==='scare'){
+    const n=AC.createBufferSource(), buf=AC.createBuffer(1,AC.sampleRate*1.1,AC.sampleRate);
+    const ch=buf.getChannelData(0);
+    for(let i=0;i<ch.length;i++) ch[i]=(Math.random()*2-1)*Math.pow(1-i/ch.length,1.6);
+    n.buffer=buf;
+    const g=AC.createGain(); g.gain.value=0.35;
+    const f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1100; f.Q.value=0.6;
+    n.connect(f); f.connect(g); g.connect(AC.destination); n.start(t);
+    const o=AC.createOscillator(),g2=AC.createGain();
+    o.type='sawtooth'; o.frequency.setValueAtTime(640,t); o.frequency.exponentialRampToValueAtTime(95,t+0.9);
+    g2.gain.setValueAtTime(0.28,t); g2.gain.exponentialRampToValueAtTime(0.0001,t+1.0);
+    o.connect(g2); g2.connect(AC.destination); o.start(t); o.stop(t+1.05);
+  } else if(kind==='whisper'){
+    const n=AC.createBufferSource(), buf=AC.createBuffer(1,AC.sampleRate*1.6,AC.sampleRate);
+    const ch=buf.getChannelData(0);
+    for(let i=0;i<ch.length;i++) ch[i]=(Math.random()*2-1)*0.5*Math.abs(Math.sin(i/2600));
+    n.buffer=buf;
+    const f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=2400; f.Q.value=2.5;
+    const g=AC.createGain(); g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.05,t+0.5); g.gain.linearRampToValueAtTime(0.0001,t+1.6);
+    n.connect(f); f.connect(g); g.connect(AC.destination); n.start(t);
+  }
+}
+
+/* ================= state ================= */
+const S = {
+  scene:null, light:false, drawerOpen:false, hasKey:false, treatOpen:false,
+  cabinetOpen:false, hasDriver:false, hasFuse:false, breakerOpen:false,
+  power:false, dollSeen:false, mirrorSeen:0, chartRead:false, boardRead:false, fileRead:false,
+  items:[], selected:null, ended:false,
+};
+const ITEMS = {
+  light: {icon:'🔦', name:'懐中電灯'},
+  key:   {icon:'🗝️', name:'古い鍵'},
+  driver:{icon:'🪛', name:'ドライバー'},
+  fuse:  {icon:'🔌', name:'ヒューズ'},
+};
+const $=id=>document.getElementById(id);
+const msgEl=$('msg'), choicesEl=$('choices');
+let msgTimer=null;
+
+function say(text){
+  clearInterval(msgTimer); choicesEl.innerHTML='';
+  msgEl.textContent='';
+  let i=0;
+  msgTimer=setInterval(()=>{
+    msgEl.textContent=text.slice(0,++i);
+    if(i>=text.length) clearInterval(msgTimer);
+  },22);
+}
+function choices(list){
+  choicesEl.innerHTML='';
+  list.forEach(([label,fn,cls])=>{
+    const b=document.createElement('button');
+    b.className='btn'+(cls?' '+cls:''); b.textContent=label;
+    b.onclick=()=>{ sfx('click'); fn(); };
+    choicesEl.appendChild(b);
+  });
+}
+function give(id){
+  S.items.push(id); sfx('get'); renderItems();
+  const idx=S.items.length-1, el=$('slot'+idx);
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+}
+function renderItems(){
+  for(let i=0;i<4;i++){
+    const el=$('slot'+i), id=S.items[i];
+    el.textContent=id?ITEMS[id].icon:'';
+    el.classList.toggle('sel', id && S.selected===id);
+    el.onclick=()=>{ if(!id)return; sfx('click');
+      S.selected = (S.selected===id)?null:id; renderItems();
+      say(S.selected?ITEMS[id].name+'を構えた。使いたい場所をタップしよう。':ITEMS[id].name+'をしまった。');
+    };
+  }
+}
+function useSel(){ const s=S.selected; S.selected=null; renderItems(); return s; }
+function shake(){ const st=$('stage'); st.classList.remove('shake'); void st.offsetWidth; st.classList.add('shake'); }
+function ghostFlash(ms=900, cb){
+  sfx('scare'); shake();
+  if(navigator.vibrate) navigator.vibrate([90,40,160]);
+  $('ghost').style.display='flex';
+  setTimeout(()=>{ $('ghost').style.display='none'; if(cb)cb(); }, ms);
+}
+
+/* ================= scenes ================= */
+const ROOMNAMES = {room:'201号室', hall:'2階 廊下', treat:'処置室', exit:'非常口前'};
+const BACKDEST = {hall:'room', treat:'hall', exit:'hall'};
+function go(scene){
+  S.scene=scene;
+  document.querySelectorAll('.scene').forEach(el=>el.classList.remove('on'));
+  $('sc-'+scene).classList.add('on');
+  $('roomname').textContent='■ '+ROOMNAMES[scene];
+  $('dark').style.opacity = S.light ? 0 : 1;
+  const dest=BACKDEST[scene];
+  $('backbtn').style.display = dest ? 'block' : 'none';
+  if(dest) $('backbtn').textContent='← '+ROOMNAMES[dest]+'に戻る';
+}
+$('backbtn').onclick=()=>{
+  if(S.ended) return;
+  const dest=BACKDEST[S.scene];
+  if(!dest) return;
+  sfx('click'); go(dest);
+  say(ROOMNAMES[dest]+'に戻った。');
+};
+
+/* ================= modal ================= */
+function modal(title, bodyHTML){
+  $('modal-title').textContent=title;
+  $('modal-body').innerHTML=bodyHTML;
+  $('modal').classList.add('on');
+}
+$('modal-close').onclick=()=>{ sfx('click'); $('modal').classList.remove('on'); };
+
+function keypad(title, answer, onOk, onNg){
+  let val='';
+  modal(title, `<div id="pad-disp">----</div><div id="pad"></div>`);
+  const disp=$('pad-disp'), pad=$('pad');
+  '123456789C0⏎'.split('').forEach(k=>{
+    const b=document.createElement('button'); b.textContent=k;
+    b.onclick=()=>{
+      sfx('click');
+      if(k==='C') val='';
+      else if(k==='⏎'){
+        if(val===answer){ $('modal').classList.remove('on'); onOk(); }
+        else { val=''; disp.textContent='ERROR'; sfx('whisper'); if(onNg)onNg(); return; }
+      }
+      else if(val.length<4) val+=k;
+      disp.textContent = val.padEnd(4,'-');
+    };
+    pad.appendChild(b);
+  });
+}
+
+/* ================= interactions ================= */
+const ACT = {
+  /* ---- 201号室 ---- */
+  'room-window'(){ say('鉄格子のはまった窓。月が出ている。\nガラスの向こうで、何かが横切った気がした…。'); sfx('whisper'); },
+  'room-bed'(){ say('錆びたベッド。シーツに人の形のくぼみが残っている。\nまだ、ほんのり温かい。'); },
+  'room-under'(){
+    if(S.items.includes('light')){ say('ベッドの下には、もう何もない。'); return; }
+    say('ベッドの下に手を伸ばすと、冷たい金属が触れた。\n【懐中電灯】を手に入れた。点けてみよう。');
+    give('light');
+  },
+  'room-chart'(){
+    S.chartRead=true;
+    modal('古いカルテ', `
+      <p style="text-align:left">患者氏名:佐倉 ミサキ(8)<br>
+      患者ID:<b style="color:#d8c890">4 7 2 9</b><br>
+      病室:201号室<br><br>
+      <span style="color:#777">"夜になると 誰かと話す声がする と訴え——"</span><br>
+      <span class="bloodtext">以降のページは破り取られている。</span></p>`);
+  },
+  'room-drawer'(){
+    if(S.drawerOpen){ say('引き出しは空っぽだ。'); return; }
+    keypad('ダイヤル錠(4桁)', '4729', ()=>{
+      S.drawerOpen=true; sfx('unlock');
+      say('カチリ。引き出しが開いた。\n中には【古い鍵】。タグに「処置室」と書いてある。');
+      give('key');
+    }, ()=>{ if(!S.chartRead) say('開かない。どこかに番号のヒントがあるはずだ。'); });
+  },
+  'room-door'(){
+    if(!S.light){
+      if(S.items.includes('light')){
+        S.light=true; $('dark').style.opacity=0; sfx('unlock');
+        say('懐中電灯を点けた。震える光が廊下の闇を裂く。\n…行くしかない。');
+        setTimeout(()=>go('hall'), 900);
+      } else {
+        say('ドアの外は真っ暗だ。明かりがないと一歩も進めない。');
+        sfx('whisper');
+      }
+      return;
+    }
+    go('hall'); say('軋む床。長い廊下に出た。');
+  },
+
+  /* ---- 廊下 ---- */
+  'hall-blood'(){
+    sfx('whisper');
+    say('壁に赤黒い文字。──「みている」。\nまだ乾いていない。');
+    if(!S.dollSeen && navigator.vibrate) navigator.vibrate(60);
+  },
+  'hall-board'(){
+    S.boardRead=true;
+    modal('掲示板', `
+      <p style="text-align:left">色褪せた「おくすりの保管手順」が貼ってある。<br><br>
+      <span style="font-size:22px">🔴 → 🔵 → 🟢 → 🟡</span><br><br>
+      <span style="color:#777">「あか、あお、みどり、きいろ。<br>じゅんばん まもってね」</span><br>
+      子供の字で書き足されている。</p>`);
+  },
+  'hall-wheel'(){
+    say('誰もいない車椅子。\n車輪が、ゆっくりと回っている。');
+    sfx('whisper');
+  },
+  'hall-treat'(){
+    if(S.treatOpen){ go('treat'); say('薬品の匂いが鼻をつく。'); return; }
+    if(useSel()==='key'){
+      S.treatOpen=true; sfx('unlock');
+      say('古い鍵が回った。処置室の扉が開く。');
+      setTimeout(()=>{ go('treat'); say('薬品棚、ストレッチャー、曇った鏡──処置室だ。'); },800);
+    } else {
+      say('「処置室」。鍵がかかっている。');
+    }
+  },
+  'hall-exit'(){ go('exit'); say('廊下の突き当たり。非常口の前に立った。'); },
+  'hall-back'(){ go('room'); say('201号室に戻った。'); },
+
+  /* ---- 処置室 ---- */
+  'treat-mirror'(){
+    S.mirrorSeen++;
+    if(S.mirrorSeen===2){
+      ghostFlash(950, ()=>say('鏡の中で、長い髪の"何か"がこちらを見ていた。\n振り返っても、誰もいない。'));
+    } else {
+      say('曇った鏡。自分の顔が、いやに青白い。\n…後ろに、何か映らなかったか?');
+      sfx('whisper');
+    }
+  },
+  'treat-doll'(){
+    S.dollSeen=true;
+    say('ストレッチャーの上に古い人形。\n「……あそんでくれるの?」\n──気のせいだ。気のせいに決まってる。');
+    sfx('whisper');
+    if(navigator.vibrate) navigator.vibrate(40);
+  },
+  'treat-files'(){
+    S.fileRead=true;
+    modal('診療記録の束', `
+      <p style="text-align:left">ほとんど黴びて読めないが、一枚だけ──<br><br>
+      <span style="color:#999">「201号室 佐倉ミサキ<br>
+      ○月13日 <b style="color:#c66">午前 2:44</b> 死亡確認」</span><br><br>
+      <span class="bloodtext">余白に小さく「でられないよ」と書かれている。</span></p>`);
+  },
+  'treat-cab'(){
+    if(S.cabinetOpen){ say('薬品棚はもう空だ。'); return; }
+    colorLock();
+  },
+  'treat-back'(){ go('hall'); say('廊下に戻った。'); },
+
+  /* ---- 非常口前 ---- */
+  'exit-breaker'(){
+    if(S.power){ say('配電盤。ブレーカーは入っている。'); return; }
+    if(!S.breakerOpen){
+      if(useSel()==='driver'){
+        S.breakerOpen=true; sfx('unlock');
+        say('ドライバーでネジを外し、配電盤の蓋を開けた。\nヒューズが1本、抜き取られている。');
+      } else {
+        say('配電盤。蓋がネジで固く閉じられている。工具が要る。');
+      }
+      return;
+    }
+    if(useSel()==='fuse'){
+      S.power=true;
+      say('ヒューズを差し込み、ブレーカーを上げた。');
+      setTimeout(()=>{
+        ghostFlash(1000, ()=>{
+          say('非常灯が点いた瞬間──すぐ後ろに立っていた。\n少女が。笑っていた。\n…急げ。扉を開けるんだ。');
+        });
+      }, 700);
+    } else {
+      say('ヒューズの差し込み口が空っぽだ。代わりを探そう。');
+    }
+  },
+  'exit-keypad'(){
+    if(!S.power){ say('テンキーの画面は真っ暗。「停電中ハ操作デキマセン」。'); return; }
+    keypad('非常口 電子ロック', '0244', ()=>{
+      sfx('unlock'); finale();
+    }, ()=>{ if(!S.fileRead) say('違うようだ。…この病院で"何かが起きた時刻"。'); });
+  },
+  'exit-door'(){
+    if(!S.power) say('非常口は電子ロックで封鎖されている。電源が落ちているようだ。');
+    else say('ロックを解除しないと開かない。横のテンキーだ。');
+  },
+  'exit-back'(){ go('hall'); say('廊下に戻った。'); },
+};
+
+function colorLock(){
+  modal('薬品棚のロック', `
+    <p>4色のボタンが並んでいる。<br>正しい順番で押せ。</p>
+    <div id="pad" style="grid-template-columns:repeat(4,1fr)">
+      <button data-c="y" style="font-size:24px">🟡</button>
+      <button data-c="g" style="font-size:24px">🟢</button>
+      <button data-c="r" style="font-size:24px">🔴</button>
+      <button data-c="b" style="font-size:24px">🔵</button>
+    </div>
+    <div id="pad-disp" style="letter-spacing:6px">----</div>`);
+  let seq='';
+  $('pad').querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      sfx('click'); seq+=b.dataset.c;
+      $('pad-disp').textContent=('●'.repeat(seq.length)).padEnd(4,'-');
+      if(seq.length===4){
+        if(seq==='rbgy'){
+          $('modal').classList.remove('on');
+          S.cabinetOpen=true; sfx('unlock');
+          say('ガチャン。薬品棚が開いた。\n【ドライバー】と【ヒューズ】を手に入れた。');
+          give('driver'); setTimeout(()=>give('fuse'),350);
+        } else {
+          seq=''; $('pad-disp').textContent='----'; sfx('whisper');
+          if(!S.boardRead) say('開かない。順番のヒントがどこかに…。');
+        }
+      }
+    };
+  });
+}
+
+/* ================= finale ================= */
+function finale(){
+  say('ロック解除──重い扉が開いた!\n背後から、裸足の足音が走ってくる…!!');
+  if(navigator.vibrate) navigator.vibrate([120,60,120,60,200]);
+  choices([
+    ['振り返らず走る', ()=>ending(true)],
+    ['振り返る', ()=>ending(false), 'danger'],
+  ]);
+}
+function ending(good){
+  if(S.ended) return; S.ended=true;
+  if(!good){
+    ghostFlash(1400, ()=>{
+      $('end-title').textContent='BAD END';
+      $('end-title').className='bloodtext';
+      $('end-text').innerHTML='振り返った先に、彼女の顔があった。<br>「みつけた」<br><br>あなたが病院を出ることは、二度となかった。<br>今夜もどこかで、車輪の回る音がする──。';
+      showEnd();
+    });
+  } else {
+    sfx('scare');
+    setTimeout(()=>{
+      $('end-title').textContent='ESCAPE SUCCESS';
+      $('end-title').style.color='#7fae7f';
+      $('end-text').innerHTML='夜気が肺に流れ込む。あなたは外に出た。<br><br>振り返ると、2階の窓に小さな影。<br>少女は手を振っていた。<br><br>「またね」<br><br>── 脱出成功 ──';
+      showEnd();
+    }, 1200);
+  }
+}
+function showEnd(){
+  $('ending').classList.remove('hidden');
+  if(droneGain) droneGain.gain.linearRampToValueAtTime(0.004, AC.currentTime+2);
+  clearInterval(heartTimer);
+}
+
+/* ================= boot ================= */
+document.querySelectorAll('.hs').forEach(b=>{
+  b.addEventListener('click',()=>{ if(!S.ended) ACT[b.dataset.act](); });
+});
+$('start').onclick=()=>{
+  audioInit(); sfx('unlock');
+  $('title').classList.add('hidden');
+  go('room');
+  say('──ふと、目が覚めた。\nここは…病院? 廃墟のはずの、あの旧病院の中だ。\nなぜ自分がここにいるのか、思い出せない。\n\n気になる場所をタップして調べよう。');
+  // random ambient whisper
+  setInterval(()=>{ if(!S.ended && Math.random()<0.30) sfx('whisper'); }, 12000);
+};
+$('retry').onclick=()=>location.reload();
+renderItems();
+</script>
+</body>
+</html>
