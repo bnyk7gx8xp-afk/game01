@@ -28,6 +28,12 @@
   .hs { position:absolute; background:transparent; border:none; }
   .hs:active { background:rgba(255,255,255,.05); border-radius:8px; }
 
+  /* visible back button */
+  #backbtn { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); z-index:6;
+    display:none; padding:10px 22px; font-size:14px; letter-spacing:2px; white-space:nowrap;
+    color:#cfc8bd; background:rgba(10,9,8,.78); border:1px solid #5c4a33; border-radius:20px; }
+  #backbtn:active { background:rgba(44,33,24,.9); }
+
   /* darkness overlay before flashlight */
   #dark { position:absolute; inset:0; background:radial-gradient(circle at 50% 55%, rgba(0,0,0,.55) 0%, rgba(0,0,0,.97) 55%, #000 75%); pointer-events:none; transition:opacity 1s; z-index:2; }
   #vignette { position:absolute; inset:0; pointer-events:none; z-index:3;
@@ -257,6 +263,8 @@
       <button class="hs" data-act="exit-back"    style="left:0%;  top:88%; width:100%; height:12%"></button>
     </div>
 
+    <button id="backbtn"></button>
+
     <div id="dark"></div>
     <div id="vignette"></div>
     <div id="flicker" class="flickering"></div>
@@ -435,13 +443,24 @@ function ghostFlash(ms=900, cb){
 
 /* ================= scenes ================= */
 const ROOMNAMES = {room:'201号室', hall:'2階 廊下', treat:'処置室', exit:'非常口前'};
+const BACKDEST = {hall:'room', treat:'hall', exit:'hall'};
 function go(scene){
   S.scene=scene;
   document.querySelectorAll('.scene').forEach(el=>el.classList.remove('on'));
   $('sc-'+scene).classList.add('on');
   $('roomname').textContent='■ '+ROOMNAMES[scene];
   $('dark').style.opacity = S.light ? 0 : 1;
+  const dest=BACKDEST[scene];
+  $('backbtn').style.display = dest ? 'block' : 'none';
+  if(dest) $('backbtn').textContent='← '+ROOMNAMES[dest]+'に戻る';
 }
+$('backbtn').onclick=()=>{
+  if(S.ended) return;
+  const dest=BACKDEST[S.scene];
+  if(!dest) return;
+  sfx('click'); go(dest);
+  say(ROOMNAMES[dest]+'に戻った。');
+};
 
 /* ================= modal ================= */
 function modal(title, bodyHTML){
